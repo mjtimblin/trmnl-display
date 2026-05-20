@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -348,16 +349,17 @@ func watchInkyButtons(events chan<- inputEvent, options AppOptions) {
 		inkyButtonA: inputNext,
 		inkyButtonB: inputStatus,
 	}
+	reader, err := newGPIOButtonReader(buttons)
+	if err != nil {
+		if options.Verbose {
+			fmt.Printf("Pimoroni button GPIO unavailable: %v\n", err)
+		}
+		return
+	}
 
 	previous := make(map[int]string, len(buttons))
 	for pin := range buttons {
-		if err := setupGPIOInput(pin); err != nil {
-			if options.Verbose {
-				fmt.Printf("Button GPIO %d unavailable: %v\n", pin, err)
-			}
-			return
-		}
-		value, err := readGPIOValue(pin)
+		value, err := reader.read(pin)
 		if err != nil {
 			if options.Verbose {
 				fmt.Printf("Button GPIO %d read failed: %v\n", pin, err)
@@ -372,7 +374,7 @@ func watchInkyButtons(events chan<- inputEvent, options AppOptions) {
 
 	for range ticker.C {
 		for pin, event := range buttons {
-			value, err := readGPIOValue(pin)
+			value, err := reader.read(pin)
 			if err != nil {
 				continue
 			}
@@ -389,32 +391,50 @@ func watchInkyButtons(events chan<- inputEvent, options AppOptions) {
 	}
 }
 
-func setupGPIOInput(pin int) error {
-	gpioPath := fmt.Sprintf("/sys/class/gpio/gpio%d", pin)
-	if _, err := os.Stat(gpioPath); os.IsNotExist(err) {
-		if err := os.WriteFile("/sys/class/gpio/export", []byte(fmt.Sprintf("%d", pin)), 0200); err != nil && !os.IsExist(err) {
-			return err
-		}
-		for i := 0; i < 10; i++ {
-			if _, err := os.Stat(gpioPath); err == nil {
-				break
-			}
-			time.Sleep(50 * time.Millisecond)
-		}
-	}
-
-	if err := os.WriteFile(filepath.Join(gpioPath, "direction"), []byte("in"), 0600); err != nil {
-		return err
-	}
-	return nil
+type gpioButtonReader struct {
+	chip string
 }
 
-func readGPIOValue(pin int) (string, error) {
-	data, err := os.ReadFile(fmt.Sprintf("/sys/class/gpio/gpio%d/value", pin))
+func newGPIOButtonReader(buttons map[int]inputEvent) (gpioButtonReader, error) {
+	if _, err := exec.LookPath("gpioget"); err != nil {
+		return gpioButtonReader{}, err
+	}
+
+	chips, err := filepath.Glob("/dev/gpiochip*")
+	if err != nil {
+		return gpioButtonReader{}, err
+	}
+	if len(chips) == 0 {
+		return gpioButtonReader{}, fmt.Errorf("no /dev/gpiochip devices found")
+	}
+
+	for _, chipPath := range chips {
+		reader := gpioButtonReader{chip: filepath.Base(chipPath)}
+		usable := true
+		for pin := range buttons {
+			if _, err := reader.read(pin); err != nil {
+				usable = false
+				break
+			}
+		}
+		if usable {
+			return reader, nil
+		}
+	}
+
+	return gpioButtonReader{}, fmt.Errorf("gpioget could not read GPIO pins 5 and 6 from available gpiochips")
+}
+
+func (r gpioButtonReader) read(pin int) (string, error) {
+	output, err := exec.Command("gpioget", r.chip, strconv.Itoa(pin)).Output()
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(string(data)), nil
+	value := strings.TrimSpace(string(output))
+	if value != "0" && value != "1" {
+		return "", fmt.Errorf("unexpected gpioget value %q", value)
+	}
+	return value, nil
 }
 
 func waitForNextUpdate(tmpDir string, options AppOptions, frames int, refreshRate int, events <-chan inputEvent) {
