@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/png"
+	"image/jpeg"
 	"io"
 	"net/http"
 	"os"
@@ -541,14 +541,14 @@ func createStatusImage(tmpDir string) (string, error) {
 	drawText(img, 50, 320, "MACHINE", 4, color.RGBA{0, 0, 0, 255})
 	drawText(img, 250, 320, machine, 4, color.RGBA{0, 0, 0, 255})
 
-	statusPath := filepath.Join(tmpDir, "status.png")
+	statusPath := filepath.Join(tmpDir, "status.jpg")
 	out, err := os.Create(statusPath)
 	if err != nil {
 		return "", err
 	}
 	defer out.Close()
 
-	if err := png.Encode(out, img); err != nil {
+	if err := jpeg.Encode(out, img, &jpeg.Options{Quality: 95}); err != nil {
 		return "", err
 	}
 	return statusPath, nil
@@ -706,9 +706,9 @@ func displayImage(imagePath string, options AppOptions, frames int) error {
 	} else {
 		sb3.WriteString("partial") // partial = no flicker/flash
 	}
-	err := exec.Command("show_img", sb.String(), sb2.String(), sb3.String()).Run()
+	output, err := exec.Command("show_img", sb.String(), sb2.String(), sb3.String()).CombinedOutput()
 	if err != nil {
-		fmt.Printf("show_img tool missing; build it and try again; error = %v\n", err)
+		fmt.Printf("show_img failed: %v\n%s\n", err, strings.TrimSpace(string(output)))
 		os.Exit(0)
 	}
 	if options.Verbose {
