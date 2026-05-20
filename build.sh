@@ -85,9 +85,9 @@ After=network-online.target
 [Service]
 Type=simple
 User=$SERVICE_USER
-WorkingDirectory="$SCRIPT_DIR"
-Environment="HOME=$SERVICE_HOME"
-ExecStart="$SCRIPT_DIR/trmnl-display"
+WorkingDirectory=$SCRIPT_DIR
+Environment=HOME=$SERVICE_HOME
+ExecStart=$SCRIPT_DIR/trmnl-display
 Restart=always
 RestartSec=10
 

@@ -106,6 +106,8 @@ journalctl -u trmnl-display -f
 
 The service is enabled during installation. Confirm automatic startup by running `sudo reboot`, which should momentarily trigger an automatic screen refresh after the network comes online.
 
+If you move the repository after installation, run `./build.sh` again so the service points to the new path.
+
 ## Configuration
 
 TRMNL Display by default stores the following two configuration files in:
