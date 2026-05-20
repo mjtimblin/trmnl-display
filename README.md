@@ -61,13 +61,15 @@ On the first run you'll be asked to provide your Device API Key. If you're using
 
 If you're using a [BYOS solution](https://docs.usetrmnl.com/go/diy/byos), find your API key from that implementation's settings screen. You will also need to change the `base_url` to point to your server. See **Configuration** for more details.
 
-To skip to the next item in your playlist, press the `enter` key.
+To skip to the next item in your playlist, press the `enter` key. On the Pimoroni Inky Impression Spectra 7.3", button `A` also skips to the next item.
 
 ```bash
 Keypress...skipping to next update
 Displayed: /tmp/trmnl-display3898330261/plugin-b67875-1763221411
 EPD update completed
 ```
+
+On the Pimoroni Inky Impression Spectra 7.3", button `B` displays a local status screen with the current date and time, Wi-Fi network name, and machine hostname. The status screen remains visible until the normal refresh timeout, button `A`, or the `enter` key.
 
 Optional flags:
 
