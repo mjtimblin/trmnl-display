@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 # This script builds the trmnl-epaper binary for multiple Raspberry Pi architectures using cross-compilation.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SERVICE_USER="${SUDO_USER:-$(whoami)}"
+SERVICE_HOME="$(eval echo "~$SERVICE_USER")"
 
 # save the current directory
   pushd .
@@ -71,6 +74,27 @@ set -e
 
   echo "Compiling TRMNL go program..."
   go build -o trmnl-display ./trmnl-display.go
-  
-  echo "Build complete. Run trmnl-display to start."
 
+  echo "Installing trmnl-display systemd service..."
+  sudo tee /etc/systemd/system/trmnl-display.service > /dev/null <<EOF
+[Unit]
+Description=TRMNL Display
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=$SERVICE_USER
+WorkingDirectory="$SCRIPT_DIR"
+Environment="HOME=$SERVICE_HOME"
+ExecStart="$SCRIPT_DIR/trmnl-display"
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  sudo systemctl daemon-reload
+  sudo systemctl enable trmnl-display.service
+
+  echo "Build complete. Run 'sudo systemctl start trmnl-display' to start now, or reboot to start automatically after the network is available."

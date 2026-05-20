@@ -45,8 +45,11 @@ Input "1" or "2" or "3", then press enter. The script will complete with the fol
 
 ```bash
 Compiling TRMNL go program...
-Build complete. Run trmnl-display to start.
+Installing trmnl-display systemd service...
+Build complete. Run 'sudo systemctl start trmnl-display' to start now, or reboot to start automatically after the network is available.
 ```
+
+The script also installs and enables a `systemd` service named `trmnl-display.service`. It starts automatically on boot after the network is available.
 
 ## Usage
 Navigate to wherever you cloned the `trmnl-display` repository.
@@ -80,39 +83,28 @@ Optional flags:
 ```
 
 ## Background Usage
-Navigate to wherever you cloned the `trmnl-display` repository.
 
-Run the application:
-```bash
-nohup ./trmnl-display &
-```
+The `build.sh` script installs `trmnl-display` as a `systemd` service so it can run in the background and start automatically after the network is available.
 
-This lets you escape the command (`ctrl+c`) and close your session without terminating the script.
-
-**Background + Automatic Reboot**
-
-To restart `trmnl-display` whenever your device is turned on, access your crontab editor with `crontab -e`. You may be required to set an editor (1, 2, 3), then press enter.
+Start it immediately:
 
 ```bash
-crontab -e
-no crontab for trmnl - using an empty one
-Select an editor.  To change later, run select-editor again.
-  1. /bin/nano        <---- easiest
-  2. /usr/bin/vim.tiny
-  3. /bin/ed
-
-Choose 1-3 [1]:
+sudo systemctl start trmnl-display
 ```
 
-Inside your crontab, paste the following command. Change the path (if applicable) to point to your `trmnl-display` Installation location:
+Check its status:
 
 ```bash
-@reboot sleep 15 && nohup /home/$(whoami)/Desktop/trmnl-display/./trmnl-display > /home/$(whoami)/.config/trmnl/logfile.log 2>&1 &
+sudo systemctl status trmnl-display
 ```
 
-The `sleep 15` intends to ensure your network configuration is ready before `trmnl-display` makes an HTTP request to your playlist.
+View logs:
 
-Confirm this works by running `sudo reboot`, which should momentarily trigger an automatic screen refresh.
+```bash
+journalctl -u trmnl-display -f
+```
+
+The service is enabled during installation. Confirm automatic startup by running `sudo reboot`, which should momentarily trigger an automatic screen refresh after the network comes online.
 
 ## Configuration
 
