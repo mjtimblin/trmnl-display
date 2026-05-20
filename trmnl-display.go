@@ -392,24 +392,42 @@ func watchInkyButtons(events chan<- inputEvent, options AppOptions) {
 }
 
 type gpioButtonReader struct {
-	chip string
+	name    string
+	readPin func(pin int) (string, error)
 }
 
 func newGPIOButtonReader(buttons map[int]inputEvent) (gpioButtonReader, error) {
-	if _, err := exec.LookPath("gpioget"); err != nil {
-		return gpioButtonReader{}, err
+	readers := []gpioButtonReader{}
+
+	if _, err := exec.LookPath("pinctrl"); err == nil {
+		readers = append(readers, gpioButtonReader{name: "pinctrl", readPin: readPinctrlGPIO})
 	}
 
-	chips, err := filepath.Glob("/dev/gpiochip*")
-	if err != nil {
-		return gpioButtonReader{}, err
-	}
-	if len(chips) == 0 {
-		return gpioButtonReader{}, fmt.Errorf("no /dev/gpiochip devices found")
+	if _, err := exec.LookPath("raspi-gpio"); err == nil {
+		readers = append(readers, gpioButtonReader{name: "raspi-gpio", readPin: readRaspiGPIO})
 	}
 
-	for _, chipPath := range chips {
-		reader := gpioButtonReader{chip: filepath.Base(chipPath)}
+	if _, err := exec.LookPath("gpioget"); err == nil {
+		readers = append(readers, gpioButtonReader{name: "gpioget-line-name", readPin: readGpiogetLineName})
+
+		chips, err := filepath.Glob("/dev/gpiochip*")
+		if err != nil {
+			return gpioButtonReader{}, err
+		}
+		for _, chipPath := range chips {
+			chip := filepath.Base(chipPath)
+			readers = append(readers,
+				gpioButtonReader{name: "gpioget-v1 " + chip, readPin: func(pin int) (string, error) {
+					return readGpiogetV1(chip, pin)
+				}},
+				gpioButtonReader{name: "gpioget-v2 " + chip, readPin: func(pin int) (string, error) {
+					return readGpiogetV2(chip, pin)
+				}},
+			)
+		}
+	}
+
+	for _, reader := range readers {
 		usable := true
 		for pin := range buttons {
 			if _, err := reader.read(pin); err != nil {
@@ -422,19 +440,58 @@ func newGPIOButtonReader(buttons map[int]inputEvent) (gpioButtonReader, error) {
 		}
 	}
 
-	return gpioButtonReader{}, fmt.Errorf("gpioget could not read GPIO pins 5 and 6 from available gpiochips")
+	return gpioButtonReader{}, fmt.Errorf("could not read GPIO pins 5 and 6 with pinctrl, raspi-gpio, or gpioget")
 }
 
 func (r gpioButtonReader) read(pin int) (string, error) {
-	output, err := exec.Command("gpioget", r.chip, strconv.Itoa(pin)).Output()
+	return r.readPin(pin)
+}
+
+func readPinctrlGPIO(pin int) (string, error) {
+	output, err := exec.Command("pinctrl", "get", strconv.Itoa(pin)).CombinedOutput()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("pinctrl: %w: %s", err, strings.TrimSpace(string(output)))
 	}
+	return parseGPIOValue(string(output))
+}
+
+func readRaspiGPIO(pin int) (string, error) {
+	output, err := exec.Command("raspi-gpio", "get", strconv.Itoa(pin)).CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("raspi-gpio: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return parseGPIOValue(string(output))
+}
+
+func readGpiogetLineName(pin int) (string, error) {
+	return readGpioget("GPIO" + strconv.Itoa(pin))
+}
+
+func readGpiogetV1(chip string, pin int) (string, error) {
+	return readGpioget(chip, strconv.Itoa(pin))
+}
+
+func readGpiogetV2(chip string, pin int) (string, error) {
+	return readGpioget("-c", chip, strconv.Itoa(pin))
+}
+
+func readGpioget(args ...string) (string, error) {
+	output, err := exec.Command("gpioget", args...).CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("gpioget %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(output)))
+	}
+	return parseGPIOValue(string(output))
+}
+
+func parseGPIOValue(output string) (string, error) {
 	value := strings.TrimSpace(string(output))
-	if value != "0" && value != "1" {
-		return "", fmt.Errorf("unexpected gpioget value %q", value)
+	if value == "0" || strings.Contains(value, "level=0") || strings.Contains(value, "| lo") {
+		return "0", nil
 	}
-	return value, nil
+	if value == "1" || strings.Contains(value, "level=1") || strings.Contains(value, "| hi") {
+		return "1", nil
+	}
+	return "", fmt.Errorf("unexpected GPIO value %q", value)
 }
 
 func waitForNextUpdate(tmpDir string, options AppOptions, frames int, refreshRate int, events <-chan inputEvent) {
